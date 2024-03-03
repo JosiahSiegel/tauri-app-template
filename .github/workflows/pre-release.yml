@@ -1,15 +1,25 @@
-name: Release
+# https://tauri.app/v1/guides/building/cross-platform#example-workflow
+name: Pre-Release
 on:
   pull_request:
     branches:
       - main
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
 
 jobs:
+  reset_prerelease:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reset Release
+        uses: ncipollo/release-action@v1.14.0
+        with:
+          prerelease: true
+          tag: v0.0.1
+          removeArtifacts: true
+          updateOnlyUnreleased: true
+          allowUpdates: true
+
   release:
+    needs: reset_prerelease
     permissions:
       contents: write
     strategy:
@@ -17,6 +27,7 @@ jobs:
       matrix:
         platform: [macos-latest, ubuntu-20.04, windows-latest]
     runs-on: ${{ matrix.platform }}
+    environment: ${{ matrix.platform }}
 
     steps:
       - name: Checkout repository
@@ -58,31 +69,24 @@ jobs:
           prerelease: false
 
       - name: Upload a Build Artifact - ${{ matrix.platform }}
-        if: matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@v4.3.1
         with:
           name: ${{ matrix.platform }}-build
           path: |
-            ${{ github.workspace }}/src-tauri/target/release/bundle/dmg/*
-            ${{ github.workspace }}/src-tauri/target/release/bundle/macos/*
+            ${{ github.workspace }}${{ vars.RELEASE_PATH_01 }}${{ vars.DIR_WILDCARD }}
+            ${{ github.workspace }}${{ vars.RELEASE_PATH_02 }}${{ vars.DIR_WILDCARD }}
           if-no-files-found: error
 
-      - name: Upload a Build Artifact - ${{ matrix.platform }}
-        if: matrix.platform == 'ubuntu-20.04'
-        uses: actions/upload-artifact@v4.3.1
-        with:
-          name: ${{ matrix.platform }}-build
-          path: |
-            ${{ github.workspace }}/src-tauri/target/release/bundle/deb/*
-            ${{ github.workspace }}/src-tauri/target/release/bundle/appimage/*
-          if-no-files-found: error
+      - name: Tar files - ${{ matrix.platform }}
+        run: |
+          tar -czf ${{ vars.RELEASE_NAME_01 }}.tar.gz -C ${{ github.workspace }}${{ vars.RELEASE_PATH_01 }} .
+          tar -czf ${{ vars.RELEASE_NAME_02 }}.tar.gz -C ${{ github.workspace }}${{ vars.RELEASE_PATH_02 }} .
 
-      - name: Upload a Build Artifact - ${{ matrix.platform }}
-        if: matrix.platform == 'windows-latest'
-        uses: actions/upload-artifact@v4.3.1
+      - name: Update Pre-Release - ${{ matrix.platform }}
+        uses: ncipollo/release-action@v1.14.0
         with:
-          name: ${{ matrix.platform }}-build
-          path: |
-            ${{ github.workspace }}\\src-tauri\\target\\release\\bundle\\msi\\*
-            ${{ github.workspace }}\\src-tauri\\target\\release\\bundle\\nsis\\*
-          if-no-files-found: error
+          prerelease: true
+          artifacts: "${{ github.workspace }}/${{ vars.RELEASE_NAME_01 }}.tar.gz,${{ github.workspace }}/${{ vars.RELEASE_NAME_02 }}.tar.gz"
+          tag: v0.0.1
+          updateOnlyUnreleased: true
+          allowUpdates: true
